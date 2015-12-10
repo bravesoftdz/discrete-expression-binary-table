@@ -1,0 +1,2 @@
+(a g9 b) g9 a g1 b g7 g12 a g1 g12 b 
+exit

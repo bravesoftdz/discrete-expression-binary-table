@@ -1,0 +1,510 @@
+program table;
+
+{$APPTYPE CONSOLE}
+
+uses
+  SysUtils, Math;
+
+resourcestring
+  SErrorCalc = 'Error occurred while calculating';
+  SUnknownOp = 'Unknown operator';
+  SUnknownId = 'Unknown identifier';
+  SUnknownSyntax = 'Unknown syntax! Computation terminated.';
+  
+Type
+  TStringArray   = array of string;
+  TVars = array[0..25] of boolean;
+const g   =   $67;
+      a    =    $61;
+var suggestion: ansistring;
+    debug: boolean = false; //debug mode
+{boolean to string}
+function boolToStr(n: boolean):ansistring;
+begin
+  if n then
+    result := '1'
+  else
+    result := '0';
+end;
+
+procedure ErrorCalc(suggestion: ansiString);
+begin
+  Writeln(SErrorCalc + ' "'+suggestion+'"');
+end;
+
+{delete symbols at beginning and end of string}
+function Trim(const S: ansistring): ansistring;
+var
+  I, L: Integer;
+  _result : string;
+begin
+  L := Length(S);
+  I := 1;
+  while (I <= L) and ((S[I] = ' ') or (S[I] = '(') or (S[I] = '[')) do Inc(I);
+  if I > L then _Result := '' else
+  begin
+    while (S[L] = ' ') or (S[L] = ')') or (S[L] = ']') do Dec(L);
+    _Result := Copy(S, I, L - I + 1);
+  end;
+  Trim := _result;
+end;
+
+function Split(Separator: Char; const Text: ansistring): TStringArray;
+var
+  i, k, Len  : Integer;
+  Count      : Integer;
+  _result    : TStringArray;
+begin
+  if Text = '' then
+  begin
+    _result := nil;
+    Exit;
+  end;
+  Count := 0;
+  Len := Length(Text);
+  for i := 1 to Len do
+  begin
+    if Text[i] = Separator then Inc(Count);
+  end;
+  SetLength(_result, Count + 1);
+  Count := 0;
+  k := 1;
+  for i := 1 to Len do
+  begin
+    if Text[i] = Separator then
+    begin
+      _result[Count] := Copy(Text, k, i - k);
+      Inc(Count);
+      k := i + 1;
+    end;
+  end;
+  _result[Count] := Copy(Text, k, Len - k + 1);
+  Split := _result;
+end;
+
+{main iterator}
+procedure GetTable(Suggestion: ansiString);
+
+  {fing maximal nesting in suggestrion}
+  {IDXl, IDXr - pointers to beginning and ending of substring}
+  function MaxNesting(suggestion: AnsiString; out IDXl, IDXr : integer) : ansistring;
+  var
+    i, _length  :  integer;
+    breaked : boolean;
+  begin
+    breaked := false;
+    i := 1; IDXl := 0; IDXr := 0;
+    _length := length(suggestion);
+  
+    while (i <= _length) and (not breaked) do begin
+      if suggestion[i] = '(' then
+        IDXl := I;
+      if suggestion[i] = ')' then begin
+        IDXr := I;
+        breaked := true;
+      end;
+      inc(i);
+    end;
+    if (IDXl = 0) and (IDXr = 0) then begin //in case of no parenthesis found
+      MaxNesting := suggestion;
+      IDXl := 1;
+      IDXr := _length;
+    end
+    else begin
+    setLength(result, IDXr - IDXl + 1);
+    _length := length(result);
+    for I := 1 to _length do
+      result[i] := suggestion[i + IDXl - 1];
+    MaxNesting := result;
+    end;
+  
+  end;
+
+  {test forms like "g0" - "g15"}
+  function g_test(input: ansiString): boolean;
+  begin
+    result := false;
+    if length(input) = 2  then begin
+      if (input[2] >= '0') and (input[2] <= '9') then
+        result := true
+    end else
+    if length(input) = 3  then
+      if (input[2] >= '0') and (input[2] <= '9') then
+        if (input[3] >= '0') and (input[3] <= '9') then
+          result := true
+  end;
+
+  {priority of binary operators}
+  function opPriority(op: byte): byte;
+  begin
+      case op of
+        $0: result := 9;
+        $1: result := 13;
+        $2: result := 5
+        $3: result := 3;
+        $4: result := 4;
+        $5: result := 3;
+        $6: result := 12;
+        $7: result := 2;
+        $8: result := 7;
+        $9: result := 1;
+        $a: result := 14;
+        $b: result := 10;
+        $c: result := 15;
+        $d: result := 11;
+        $e: result := 6;
+        $f: result := 8;
+        else result := 0;
+      end;
+  end;
+
+  {convert operators specified in word mnemonics}
+  function OpDetect(str: ansiString): byte;
+  begin
+    if g_test(str) then //directly by opCode
+      result := strtoint(copy(str,2,length(str)-1))
+    else
+    if str = 'not' then //negation
+      result := 12
+    else
+    if str = 'and' then //conjunction
+      result := 1
+    else
+    if str = 'or' then  //disjunction
+      result := 7
+    else
+    if str = '=>' then  //implication
+      result := 13
+    else
+    if str = '=' then   //equability
+      result := 9
+    else
+    if (str = '+') or (str = 'xor') then //binary add  
+      result := 6
+    else begin
+      Writeln(SUnknownOp + ' "'+str+'"');
+      EXIT;
+    end
+  end;
+
+  {find operator with maximal priority}
+  function MaxNestingOP(suggestion: AnsiString; out IDXl, IDXr : integer) : ansistring;
+  var
+    i,j, _length  :  integer;
+    maxPrior: byte;
+    tmp: TStringArray;
+  begin
+    _length := length(suggestion);
+    tmp := Split(' ', suggestion);
+    idxl := -1; idxr := -1;
+    if (length(tmp) = 1) then begin //may be var or const
+      IDXl := 1; IDXr := _length;
+      result := suggestion;
+    end else
+    if length(tmp) = 2 then begin  //may be prefix "not" statement
+      if (tmp[0] = 'not') then begin
+        IDXl := 1; IDXr := _length;
+        result := suggestion;
+      end;
+    end else begin
+      maxPrior := 0;
+      j := -1; //max op priority
+      {find valid operator}
+      for I := 0 to length(tmp) - 1 do begin
+        if g_test(tmp[i]) or   (tmp[i]='and') or (tmp[i]='or') or (tmp[i]='=>') or
+                              (tmp[i]='not') or (tmp[i]='=')  or (tmp[i]='+') or (tmp[i]='xor') then
+          if maxPrior <= OpPriority(OpDetect(tmp[i])) then begin
+            maxPrior :=  OpPriority(OpDetect(tmp[i]));
+            j := i;
+          end;
+      end;
+      IDXl := 0;
+      if j = -1 then begin //operator not found
+        result := '';
+        EXIT;
+      end;
+      {test for prefix "not" statement}
+      if (tmp[j] = 'not') or (tmp[j] = 'g12') then begin
+        for I := 0 to j - 1 do
+          IDXl := IDXl + length(tmp[i]) + 1;
+        inc(IDXl);
+        IDXr := IDXl + 4;
+      end else begin
+        for I := 0 to j - 2 do
+          IDXl := IDXl + length(tmp[i]) + 1;
+        inc(IDXl);
+        IDXr := IDXl + length(tmp[j-1]) + length(tmp[j]) + length(tmp[j+1]) + 1;
+      end;
+      result := copy(suggestion, idxl, idxr - idxl + 1);
+    end;
+  end;
+
+  {get variables specified in suggestion}
+  function GetVars(suggestion: ansistring): TVars;
+  var i: longint;
+  begin
+    for I := 0 to 25 do
+      result[i] := false;
+    if length(suggestion) = 1 then begin
+      case suggestion[1] of
+        'a'..'z': result[ord(suggestion[1]) - $61] := true;
+      end;
+    end else
+    if length(suggestion) = 2 then begin
+      case suggestion[1] of
+        'a'..'z': case suggestion[2] of
+                    'a'..'z','0'..'9':;
+                     else result[ord(suggestion[1]) - $61] := true;
+                  end; 
+        ' ','(' : case suggestion[1] of
+                    'a'..'z': result[ord(suggestion[2]) - $61] := true;
+                  end
+      end
+    end else begin
+    {find letters, separated by spaces}
+    if (suggestion[1] >= 'a') and (suggestion[1] <= 'z') and
+      not (((suggestion[2] >= 'a') and (suggestion[2] <= 'z')) or
+           ((suggestion[2] >= '0') and (suggestion[2] <= '9'))) then
+      result[ord(suggestion[1]) - $61] := true;
+    for I := 2 to length(suggestion) do
+      if (suggestion[i] >= 'a') and (suggestion[i] <= 'z') and
+        not (((suggestion[i+1] >= 'a') and (suggestion[i+1] <= 'z')) or
+            ((suggestion[i+1] >= '0') and (suggestion[i+1] <= '9'))) and
+        not (((suggestion[i-1] >= 'a') and (suggestion[i-1] <= 'z')) or
+            ((suggestion[i-1] >= '0') and (suggestion[i-1] <= '9'))) then
+        result[ord(suggestion[i]) - $61] := true;
+    end;
+  end;
+
+  {calculate elementary expression}
+  function calc(suggestion: AnsiString; environ: TVars): boolean;
+
+  var i: longint;
+      Op: byte; //op index
+      x,y: boolean; //left and right variables
+      chain: TStringArray;
+  begin
+    chain := split(' ', suggestion);
+    x:= false; y := false; op := 0;
+    result := false;
+    for I := 0 to length(chain) - 1 do
+      chain[i] := trim(chain[i]); //delete parenthesis ans spaces
+    if length(chain) = 1 then begin  //ident statement
+      op := $3;
+      case chain[0][1] of
+        'a'..'z': x := environ[ord(chain[0][1]) - $61];
+        '0'      : x := false;
+        '1'      :  x := true;
+        else Writeln(SUnknownId + ' "'+chain[0]+'"');
+      end;
+    end else
+    if length(chain) = 2 then begin //NOT X statement
+      if chain[0] = 'not' then
+        op := $c
+      else begin
+        ErrorCalc(chain[0]+chain[1]);
+        EXIT;
+      end;
+      case chain[1][1] of
+        'a'..'z': x := environ[ord(chain[1][1]) - $61];
+        '0'      : x := false;
+        '1'      :  x := true;
+        else Writeln(SUnknownId + ' "'+chain[1]+'"');
+      end;
+    end else
+    if length(chain) = 3 then begin //full statement
+      case chain[0][1] of //get left var
+        'a'..'z': x := environ[ord(chain[0][1]) - $61];
+        '0'      : x := false;
+        '1'      :  x := true;
+        else Writeln(SUnknownId + ' "'+chain[0]+'"');
+      end;
+      case chain[2][1] of //get right var
+        'a'..'z': y := environ[ord(chain[2][1]) - $61];
+        '0'      : y := false;
+        '1'      :  y := true;
+        else Writeln(SUnknownId + ' "'+chain[2]+'"');        
+      end;
+      Op := OpDetect(chain[1]); //get op
+    end;
+
+    {calculate the expr}
+    case op of
+      $0: result := false;
+      $1: result := x and y;
+      $2: result := x and not y;
+      $3: result := x;
+      $4: result := not x and y;
+      $5: result := y;
+      $6: result := (not x and y) or (x and not y);
+      $7: result := x or y;
+      $8: result := not x and not y;
+      $9: result := x = y;
+      $a: result := not y;
+      $b: result := x or not y;
+      $c: result := not x;
+      $d: result := not x or y;
+      $e: result := not x or not y;
+      $f: result := true;
+    end;
+  end;
+  
+var ins: cardinal; //base for variables
+  vars, usedvars: Tvars;
+  i,j,varscnt: byte;
+  tmp,tmp1,tmp2, outtmp: AnsiString;
+  IDXl, IDXr, IDXl1, IDXr1 : integer;
+begin
+  try
+    ins := 0;
+    varscnt := 0;
+    usedVars := GetVars(suggestion); // get used variables in expr
+    for I := 0 to 25 do //get count of used variable
+      if usedVars[i] then
+        inc(varsCnt);
+    outtmp := '   ';
+    if not debug then begin
+      {display used variables}
+      for I := 0 to 25 do
+        if usedVars[i] then
+          outtmp := outtmp + chr(i+$61) + ' | ';
+      outtmp := outtmp + suggestion;
+      writeln(outtmp);
+      outtmp := '   ';
+      for I := 0 to varsCnt * 3 + 1 + length(suggestion) do
+        outtmp := outtmp + '-';
+      writeln(outtmp);
+    end;
+    
+    while ins < trunc(power(2, varsCnt)) do begin
+      j := 0;
+      for I := 0 to 25 do  
+        if usedVars[i] then  begin
+          {get variables from cardinal number as a 32-bit array}
+          {we shifting binary mask foreach of %varsCnt% variables}
+          vars[i] := (ins and ($1 shl (varsCnt - j - 1))) <> 0;
+          inc(j);
+        end;;
+    
+      tmp := suggestion;
+      
+      {to solve the expression, we're using iterational way instead of recursive}
+      {for reduce memory usage}
+      while (tmp <> '0') and (tmp <> '1') do begin
+        tmp2 := tmp;
+        if tmp = MaxNesting(tmp, IDXl, IDXr) then begin
+          idxl := 0;
+          tmp1 := tmp;
+        end  else
+          tmp1 := trim(MaxNesting(tmp, IDXl, IDXr)); //find maximal nested statement
+        tmp1 := MaxNestingOp(tmp1, IDXl1, IDXr1); // fint statement with maximal priority
+        if tmp1 = '' then begin //if not found
+          Writeln(SUnknownSyntax);
+          EXIT;
+        end;
+        IDXl := IDXl + IDXl1;
+        IDXr := IDXl + length(tmp1) - 1;
+        tmp1 := boolToStr(calc(tmp1, vars)); //calculate the expression
+    
+        {tmp1 := boolToStr(
+          calc(
+            Trim(
+              MaxNesting(tmp, IDXl, IDXr)),
+          vars));}
+        {replace calculated expression by it value}
+        tmp := copy(tmp, 1,IDXl - 1) + tmp1 + copy(tmp, IDXr+1,length(tmp)-IDXr+1);
+        tmp := StringReplace(tmp,'(0)','0',[rfReplaceAll]);
+        tmp := StringReplace(tmp,'(1)','1',[rfReplaceAll]);
+    
+        {test for deadlock cycles}
+        if ((tmp2 = tmp) and (tmp <> '0') and (tmp <> '1')) or (length(tmp) > length(tmp2)) then begin
+          Writeln(SUnknownSyntax);
+          EXIT; 
+        end;
+        
+        if debug then
+          {write step-by-step solution in debug mode}
+          writeln('   ' + tmp);
+        {tmp := StringReplace(
+          tmp,
+          MaxNesting(tmp, IDXl, IDXr),
+          boolToStr(
+            calc(
+              Trim(
+                MaxNesting(tmp, IDXl, IDXr)),
+            vars)),
+            []
+          ); }
+      end;
+      outtmp := '   ';
+      for I := 0 to 25 do
+        if usedVars[i] then
+          outtmp := outtmp + boolToStr(vars[i])+' | ';
+      outtmp := outtmp + tmp;
+      writeln(outtmp);
+      inc(ins);
+    
+    end;
+    outtmp := '   ';
+    for I := 0 to varsCnt * 3 + 1 + length(suggestion) do
+      outtmp := outtmp + '-';
+    writeln(outtmp);
+    writeln;
+  except
+    //any exceptions will be processed here
+    Writeln(SUnknownSyntax);  
+  end;
+end;
+
+function garbageCollector(input: ansiString):ansiString;
+begin
+  result := '';
+  while input <> result do begin
+    result := input;
+    input := StringReplace(input, '  ', ' ', []);
+  end;
+  result := input;
+end;
+
+procedure ShowHelp;
+begin
+writeln('функции:');
+writeln('  help - показать это сообщение');
+writeln('  D+ / D- - включить/выключить тестовый вывод');
+writeln('  exit - завершить приложение');
+writeln('переменные: "a" - "z"');
+writeln('константы: "0", "1" ');
+writeln('приоритет операторов: "(", ")"');
+writeln('операторы: "g0" - "g15" или:');
+writeln('  "and" - коньюнкция');
+writeln('  "or"  - дизъюнкция');
+writeln('  "=>"  - импликация');
+writeln('  "=""   - эквивалентность');
+writeln('  "+"   - сумма по модулю 2');
+end;
+
+begin
+  repeat
+    write('-> ');
+    readln(suggestion);
+    suggestion := garbageCollector(suggestion);
+    if suggestion = 'help' then //show help
+      ShowHelp
+    else
+    if suggestion = 'D+' then begin
+      debug := true;
+      Writeln('Debug mode on')
+    end else
+    if suggestion = 'D-' then begin
+      debug := false;
+      Writeln('Debug mode off')
+    end else
+    if (suggestion = 'exit') then
+      halt
+    else
+    if suggestion = '' then
+
+    else
+      GetTable(suggestion)
+  until 2 + 2 = 5;
+end.

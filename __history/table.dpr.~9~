@@ -1,0 +1,159 @@
+program table;
+
+{$APPTYPE CONSOLE}
+
+uses
+	SysUtils, Classes;
+Type
+	TStringArray 	= array of string;
+	TVars = array[0..25] of boolean;
+const g 	= 	$67;
+			a		=		$61;
+var suggestion: ansistring;
+
+		i: longint;
+function boolToStr(n: boolean):ansistring;
+begin
+	if n then
+		result := '1'
+	else
+		result := '0';
+end;
+
+function Split(Separator: Char; const Text: ansistring): TStringArray;
+var
+	i, k, Len	: Integer;
+	Count			: Integer;
+	_result		: TStringArray;
+begin
+	if Text = '' then
+	begin
+		_result := nil;
+		Exit;
+	end;
+	Count := 0;
+	Len := Length(Text);
+	for i := 1 to Len do
+	begin
+		if Text[i] = Separator then Inc(Count);
+	end;
+	SetLength(_result, Count + 1);
+	Count := 0;
+	k := 1;
+	for i := 1 to Len do
+	begin
+		if Text[i] = Separator then
+		begin
+			_result[Count] := Copy(Text, k, i - k);
+			Inc(Count);
+			k := i + 1;
+		end;
+	end;
+	_result[Count] := Copy(Text, k, Len - k + 1);
+	Split := _result;
+end;
+
+function MaxNesting(suggestion: AnsiString) : ansistring;
+var
+	i, _length	:	integer;
+	breaked : boolean;
+	IDXl, IDXr : integer;
+begin
+	breaked := false;
+	i := 1; IDXl := 0; IDXr := 0;
+	_length := length(suggestion);
+	while (i <= _length) and (not breaked) do begin
+		if suggestion[i] = '(' then
+			IDXl := I;
+		if suggestion[i] = ')' then begin
+			IDXr := I;
+			breaked := true;
+		end;
+		inc(i);
+	end;
+	if (IDXl = 0) or (IDXr = 0) then
+		MaxNesting := suggestion
+	else begin
+	setLength(result, IDXr - IDXl + 1);
+	_length := length(result);
+	for I := 1 to _length do
+		result[i] := suggestion[i + IDXl - 1];
+	MaxNesting := result;
+	end;
+end;
+
+	function calc(suggestion: AnsiString; environ: TVars): boolean;
+	var _length, ptr: longint;
+			Op: byte;
+			x,y: boolean;
+			chain: TStringArray;
+	begin
+		_length := length(suggestion);
+		chain := split(' ', suggestion);
+		if length(chain) = 3 then begin
+			case chain[0][1] of
+				'a'..'z': x := environ[ord(chain[0][1]) - $61];
+				'0'			: x := false;
+				'1'			:	x := true;
+			end;
+			case chain[2][1] of
+				'a'..'z': y := environ[ord(chain[2][1]) - $61];
+				'0'			: y := false;
+				'1'			:	y := true;
+			end;
+			if chain[1][1] = 'g' then
+				Op := strtoint(copy(chain[1],2,length(chain[1])-1));
+		end;
+
+		case op of
+			$0: result := false;
+			$1: result := x and y;
+			$2: result := x and not y;
+			$3: result := x;
+			$4: result := not x and y;
+			$5: result := y;
+			$6: result := (not x and y) or (x and not y);
+			$7: result := x or y;
+			$8: result := not x and not y;
+			$9: result := x = y;
+			$a: result := not y;
+			$b: result := x or not y;
+			$c: result := not x;
+			$d: result := not x or y;
+			$e: result := not x or not y;
+			$f: result := true;
+		end;
+	end;
+
+procedure GetTable(Suggestion: ansiString);
+var ins: cardinal;
+	vars: Tvars;
+	i: byte;
+	tmp: AnsiString;
+begin
+ins := 0;
+writeln('b | a | F');
+writeln('--|---|--');
+while ins < 4 do begin
+	for I := 0 to 25 do
+		vars[i] := (ins and ($1 shl i)) <> 0;
+	tmp := suggestion;
+	while length(tmp) > 1 do begin
+		calc(MaxNesting(tmp), vars)
+  end;
+	writeln(boolToStr(vars[1])+' | '+boolToStr(vars[0])+' | '+boolToStr(calc(suggestion,vars)));
+	inc(ins);
+
+end;
+writeln('---------');
+writeln;
+end;
+
+begin
+
+repeat
+	readln(suggestion);
+	GetTable(suggestion)
+until suggestion = ''
+
+end.
