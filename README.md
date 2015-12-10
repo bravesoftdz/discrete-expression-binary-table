@@ -1,5 +1,5 @@
 # discrete-expression-binary-table
-Discrete expression binary table solver.\n
+Discrete expression binary table solver.<br>
 функции:
   help - показать это сообщение
   D+ / D- - включить/выключить тестовый вывод
