@@ -1,2 +1,4 @@
-(a g9 b) g9 a g1 b g7 g12 a g1 g12 b 
+not (a = b) = a and b or not a and not b
+(x = y) = (not (x or y) or x and y)
+a xor b xor c
 exit

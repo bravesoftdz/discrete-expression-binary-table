@@ -12,7 +12,7 @@ resourcestring
   SUnknownSyntax = 'Unknown syntax! Computation terminated.';
   
 Type
-  TStringArray   = array of string;
+  TStringArray   = array of ansistring;
   TVars = array[0..25] of boolean;
 const g   =   $67;
       a    =    $61;
@@ -36,7 +36,7 @@ end;
 function Trim(const S: ansistring): ansistring;
 var
   I, L: Integer;
-  _result : string;
+  _result : ansistring;
 begin
   L := Length(S);
   I := 1;
@@ -49,7 +49,7 @@ begin
   Trim := _result;
 end;
 
-function Split(Separator: Char; const Text: ansistring): TStringArray;
+function Split(Separator: ansiChar; const Text: ansistring): TStringArray;
 var
   i, k, Len  : Integer;
   Count      : Integer;
@@ -354,10 +354,13 @@ var ins: cardinal; //base for variables
   i,j,varscnt: byte;
   tmp,tmp1,tmp2, outtmp: AnsiString;
   IDXl, IDXr, IDXl1, IDXr1 : integer;
+  gotFalse, gotTrue : boolean;
 begin
   try
     ins := 0;
     varscnt := 0;
+    gotFalse := false;
+    gotTrue := false;
     usedVars := GetVars(suggestion); // get used variables in expr
     for I := 0 to 25 do //get count of used variable
       if usedVars[i] then
@@ -415,7 +418,7 @@ begin
         tmp := copy(tmp, 1,IDXl - 1) + tmp1 + copy(tmp, IDXr+1,length(tmp)-IDXr+1);
         tmp := StringReplace(tmp,'(0)','0',[rfReplaceAll]);
 				tmp := StringReplace(tmp,'(1)','1',[rfReplaceAll]);
-				tmp := trim(tmp);
+				//tmp := trim(tmp);
     
         {test for deadlock cycles}
         if ((tmp2 = tmp) and (tmp <> '0') and (tmp <> '1')) or (length(tmp) > length(tmp2)) then begin
@@ -437,6 +440,10 @@ begin
             []
           ); }
       end;
+      if (not gotTrue) then
+        gotTrue := tmp = '1';
+      if (not gotFalse) then
+        gotFalse := tmp = '0';
       outtmp := '   ';
       for I := 0 to 25 do
         if usedVars[i] then
@@ -451,6 +458,14 @@ begin
       outtmp := outtmp + '-';
     writeln(outtmp);
     writeln;
+    if(gotTrue and not gotFalse) then
+      writeln('Expression is always true')
+    else
+    if(not gotTrue and gotFalse) then
+      writeln('Expression is always false')
+    else
+    if(gotTrue and gotFalse or not gotTrue and not gotFalse) then
+      writeln('Expression is not true, not false');
   except
     //any exceptions will be processed here
     Writeln(SUnknownSyntax);  
